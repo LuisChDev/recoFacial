@@ -4,6 +4,7 @@ import os
 import pickle
 import sys
 import time
+import yaml
 
 import numpy as np  # type: ignore
 import tensorflow as tf  # type: ignore
@@ -12,9 +13,13 @@ from tensorflow.python.platform import gfile  # type: ignore
 
 from lfw_input import (filter_dataset, get_dataset,  # type: ignore
                        split_dataset)
-from medium_facenet_tutorial import lfw_input  # type: ignore
+# from medium_facenet_tutorial import lfw_input  # type: ignore
+import lfw_input
 
 logger = logging.getLogger(__name__)
+
+with open("../config.yaml") as f:
+    conf = yaml.safe_load(f)
 
 
 def main(input_directory,
@@ -96,7 +101,8 @@ def main(input_directory,
             _train_and_save_classifier(emb_array, label_array, class_names,
                                        classifier_filename)
         else:
-            _evaluate_classifier(emb_array, label_array, classifier_filename)
+            return _evaluate_classifier(
+                emb_array, label_array, classifier_filename)
 
         logger.info('Completed in {} seconds'.format(time.time() - start_time))
 
@@ -115,8 +121,11 @@ def _get_test_and_train_set(input_dir,
     dataset = get_dataset(input_dir)
     dataset = filter_dataset(
         dataset, min_images_per_label=min_num_images_per_label)
-    train_set, test_set = split_dataset(dataset, split_ratio=split_ratio)
+    # uncomment to go back to normal
+    # train_set, test_set = split_dataset(dataset, split_ratio=split_ratio)
 
+    train_set = dataset
+    test_set = dataset
     return train_set, test_set
 
 
@@ -202,6 +211,46 @@ def _create_embeddings(embedding_layer, images, labels, images_placeholder,
     return emb_array, label_array
 
 
+def _retrain_classifier(emb_array, label_array, class_names,
+                        classifier_filename_exp):
+    """
+    toma un directorio con imágenes, las direcciones de los embeddings y las
+    etiquetas, así como los nombres correspondientes, y guarda el nuevo modelo
+    junto con los datos actualizados en el archivo especificado.
+    """
+
+    # se abren los archivos de embeddings y etiquetas
+    with open(conf["embeddings_path"], 'rb') as f:
+        emb_array_old = np.load(f)
+
+    with open(conf["labels_path"], 'rb') as f:
+        label_array_old = np.load(f)
+
+    # se agregan los nuevos valores
+    emb_array = np.concatenate(
+        [emb_array_old, emb_array]
+    ) if emb_array_old is not None else emb_array
+
+    label_array = np.concatenate(
+        [label_array_old, label_array]
+    ) if label_array_old is not None else label_array
+
+    # se crea y entrena un nuevo modelo
+    model = SVC(kernel="linear", probability=True, verbose=False)
+    model.fit(emb_array, label_array)
+
+    # se guarda en la ubicación dada
+    with open(classifier_filename_exp, 'wb') as outfile:
+        pickle.dump((model, class_names), outfile)
+
+    # se guardan los nuevos valores para reentrenar de nuevo
+    with open(conf["embeddings_path"], 'wb') as f:
+        emb_array.dump(f)
+
+    with open(conf["labels_path"], 'wb') as f:
+        label_array.dump(f)
+
+
 def _train_and_save_classifier(emb_array, label_array, class_names,
                                classifier_filename_exp):
     logger.info('Training Classifier')
@@ -210,6 +259,8 @@ def _train_and_save_classifier(emb_array, label_array, class_names,
 
     with open(classifier_filename_exp, 'wb') as outfile:
         pickle.dump((model, class_names), outfile)
+
+
     logging.info(
         'Saved classifier model to file "%s"' % classifier_filename_exp)
 
@@ -228,12 +279,22 @@ def _evaluate_classifier(emb_array, label_array, classifier_filename):
         best_class_probabilities = predictions[np.arange(
             len(best_class_indices)), best_class_indices]
 
+        # instead of printing, we want to pass along these values in an
+        # array of pairs containing the best prediction and the
+        # probability
+        predicts = []
         for i in range(len(best_class_indices)):
-            print('%4d  %s: %.3f' % (i, class_names[best_class_indices[i]],
-                                     best_class_probabilities[i]))
+            predicts.append((i, class_names[best_class_indices[i]],
+                             best_class_probabilities[i]))
+
+        # for i in range(len(best_class_indices)):
+        #     print('%4d  %s: %.3f' % (i, class_names[best_class_indices[i]],
+        #                              best_class_probabilities[i]))
 
         accuracy = np.mean(np.equal(best_class_indices, label_array))
-        print('Accuracy: %.3f' % accuracy)
+        # print('Accuracy: %.3f' % accuracy)
+
+        return (predicts, accuracy)
 
 
 if __name__ == '__main__':

@@ -3,6 +3,12 @@
 # Deseamos realizar dos tareas distintas:
 # - dada una foto, decir quién es la persona.
 # - dada una carpeta con fotos, reentrenar el modelo con las nuevas fotos.
+import yaml
+import preprocess as pre  # type: ignore
+from train_classifier import main  # type: ignore
+
+with open("../config.yaml") as f:
+    conf = yaml.safe_load(f)
 
 
 def eval_face(input_dir):
@@ -14,7 +20,22 @@ def eval_face(input_dir):
     + picture_name does not exist/is not and image - throw type error
     + no positive match to any of the labels - throw nonexistent error
     """
-    pass
+
+    # se procesa la foto.
+    pre.main(input_dir, input_dir, 180)
+
+    # se evalúa la foto con el modelo.
+    return main(
+        input_dir,
+        conf["model_path"],
+        conf["classifier_output_path"],
+        conf["batch_size"],
+        conf["num_threads"],
+        conf["num_epochs"],
+        conf["min_num_images_per_class"],
+        conf["split_ratio"],
+        False
+    )
 
 
 def add_face(input_dir):
@@ -31,7 +52,23 @@ def add_face(input_dir):
     + pictures_folder contains pictures that are not from the same people -
       this kills the model.
     """
-    pass
+
+    # se procesan las fotos.
+    pre.main(input_dir, input_dir, 180)
+
+    # se cargan los embeddings originales, reentrena el modelo, y guarda
+    # en el mismo directorio el nuevo modelo y embeddings.
+    main(
+        input_dir,
+        conf["model_path"],
+        conf["classifier_output_path"],
+        conf["batch_size"],
+        conf["num_threads"],
+        conf["num_epochs"],
+        conf["min_num_images_per_class"],
+        conf["split_ratio"],
+        True
+    )
 
 
 def new_model(input_dir):
