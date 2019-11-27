@@ -25,7 +25,7 @@ def eval_face(input_dir):
     pre.main(input_dir, input_dir, 180)
 
     # se evalúa la foto con el modelo.
-    return main(
+    prediction = main(
         input_dir,
         conf["model_path"],
         conf["classifier_output_path"],
@@ -36,6 +36,8 @@ def eval_face(input_dir):
         conf["split_ratio"],
         False
     )
+
+    return prediction[0][0][0]
 
 
 def add_face(input_dir):
